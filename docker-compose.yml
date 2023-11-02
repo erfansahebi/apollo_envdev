@@ -1,0 +1,115 @@
+version: '3'
+
+services:
+
+  #  Dependencies
+
+  redis:
+    image: redis:7.0
+    command: --appendonly yes
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+
+  postgresql:
+    image: postgres:14.1-alpine
+    volumes:
+      - ./pg-init.sh:/docker-entrypoint-initdb.d/pg-init.sh
+      - postgresql_data:/data/postgres
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRESQL_USER}" ]
+      interval: 10s
+      timeout: 5s
+    environment:
+      POSTGRES_USER: '${POSTGRESQL_USER}'
+      POSTGRES_PASSWORD: '${POSTGRESQL_PASSWORD}'
+      PGDATA: '/data/postgres'
+      POSTGRES_MULTIPLE_DATABASES: '${POSTGRESQL_DB_NAMES}'
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    restart: always
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq/
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+
+  # Microservice
+  
+  gateway:
+    image: erfansahebi/apollo_gateway:latest
+    restart: always
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - '${APOLLO_GATEWAY_PUBLIC_HOST}:${APOLLO_GATEWAY_PUBLIC_PORT}:8000'
+    environment:
+      APP_ENV: '${APP_ENV}'
+      RABBITMQ_HOST: '${RABBITMQ_HOST}'
+      RABBITMQ_PORT: '${RABBITMQ_PORT}'
+      RABBITMQ_USER: '${RABBITMQ_USER}'
+      RABBITMQ_PASSWORD: '${RABBITMQ_PASSWORD}'
+    command: ["sh", "run.sh"]
+
+  auth:
+    image: erfansahebi/apollo_auth:latest
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      APP_ENV: '${APP_ENV}'
+      RABBITMQ_HOST: '${RABBITMQ_HOST}'
+      RABBITMQ_PORT: '${RABBITMQ_PORT}'
+      RABBITMQ_USER: '${RABBITMQ_USER}'
+      RABBITMQ_PASSWORD: '${RABBITMQ_PASSWORD}'
+      REDIS_HOST: '${REDIS_HOST}'
+      REDIS_PORT: '${REDIS_PORT}'
+      REDIS_DB_NAME: '${AUTH_REDIS_DB_NAME}'
+      DB_HOST: '${POSTGRESQL_HOST}'
+      DB_PORT: '${POSTGRESQL_PORT}'
+      DB_USER: '${POSTGRESQL_USER}'
+      DB_PASSWORD: '${POSTGRESQL_PASSWORD}'
+      DB_NAME: '${AUTH_DB_NAME}'
+    command: ["sh", "run.sh"]
+
+  rss:
+    image: erfansahebi/apollo_rss:latest
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      APP_ENV: '${APP_ENV}'
+      RABBITMQ_HOST: '${RABBITMQ_HOST}'
+      RABBITMQ_PORT: '${RABBITMQ_PORT}'
+      RABBITMQ_USER: '${RABBITMQ_USER}'
+      RABBITMQ_PASSWORD: '${RABBITMQ_PASSWORD}'
+      REDIS_HOST: '${REDIS_HOST}'
+      REDIS_PORT: '${REDIS_PORT}'
+      REDIS_DB_NAME: '${RSS_REDIS_DB_NAME}'
+      DB_HOST: '${POSTGRESQL_HOST}'
+      DB_PORT: '${POSTGRESQL_PORT}'
+      DB_USER: '${POSTGRESQL_USER}'
+      DB_PASSWORD: '${POSTGRESQL_PASSWORD}'
+      DB_NAME: '${RSS_DB_NAME}'
+    command: [ "sh", "run.sh" ]
+
+volumes:
+  redis_data:
+  postgresql_data:
+  rabbitmq_data:
