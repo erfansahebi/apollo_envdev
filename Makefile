@@ -4,4 +4,4 @@ IMAGES := apollo_auth \
           apollo_gateway \
 		  apollo_rss
 build:
-	for image in $(IMAGES) ; do make -C $$image build-image; done
+	for image in $(IMAGES) ; do make -C $$image build; done
